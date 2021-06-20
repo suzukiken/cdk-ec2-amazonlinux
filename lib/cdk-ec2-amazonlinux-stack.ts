@@ -15,18 +15,47 @@ export class CdkEc2AmazonlinuxStack extends cdk.Stack {
     
     const vpc = ec2.Vpc.fromLookup(this, 'Vpc', { vpcId: vpc_id })
     
-    const asset = new assets.Asset(this, 'Asset', {
-      path: path.join(__dirname, '..', 'userdata.sh'),
+    const init_asset = new assets.Asset(this, 'InitAsset', {
+      path: path.join(__dirname, '..', 'userdata', 'initalize.sh'),
+    })
+    
+    const server_asset = new assets.Asset(this, 'ServerAsset', {
+      path: path.join(__dirname, '..', 'userdata', 'tornado_server.py'),
+    })
+    
+    const service_conf_asset = new assets.Asset(this, 'ServiceConfAsset', {
+      path: path.join(__dirname, '..', 'userdata', 'tornado.service'),
+    })
+    
+    const cfagent_conf_asset = new assets.Asset(this, 'CfagentConfAsset', {
+      path: path.join(__dirname, '..', 'userdata', 'cloudwatch-agent-config.json'),
     })
     
     const userData = ec2.UserData.forLinux()
-    const filePath = userData.addS3DownloadCommand({
-      bucket: asset.bucket,
-      bucketKey: asset.s3ObjectKey,
+    
+    const init_sh_path = userData.addS3DownloadCommand({
+      bucket: init_asset.bucket,
+      bucketKey: init_asset.s3ObjectKey,
     })
+    
+    const server_py_path = userData.addS3DownloadCommand({
+      bucket: server_asset.bucket,
+      bucketKey: server_asset.s3ObjectKey,
+    })
+    
+    const service_conf_path = userData.addS3DownloadCommand({
+      bucket: service_conf_asset.bucket,
+      bucketKey: service_conf_asset.s3ObjectKey,
+    })
+    
+    const cfagent_conf_path = userData.addS3DownloadCommand({
+      bucket: cfagent_conf_asset.bucket,
+      bucketKey: cfagent_conf_asset.s3ObjectKey,
+    })
+    
     userData.addExecuteFileCommand({
-      filePath: filePath,
-      arguments: '--verbose -y'
+      filePath: init_sh_path,
+      arguments: cdk.Fn.join(" ", [server_py_path, service_conf_path, cfagent_conf_path])
     })
      
     const linux = ec2.MachineImage.genericLinux({
@@ -52,9 +81,13 @@ export class CdkEc2AmazonlinuxStack extends cdk.Stack {
       securityGroup: ec2.SecurityGroup.fromSecurityGroupId(this, 'Ec2SecurityGrp', securitygroup_id)
     })
     
-    asset.grantRead( instance.role )
+    init_asset.grantRead( instance.role )
+    server_asset.grantRead( instance.role )
+    service_conf_asset.grantRead( instance.role )
+    cfagent_conf_asset.grantRead( instance.role )
     
-    new cdk.CfnOutput(this, 'InstancePrivate', { value: instance.instancePrivateIp })
+    new cdk.CfnOutput(this, 'PrivateIp', { value: instance.instancePrivateIp })
+    new cdk.CfnOutput(this, 'PublicIp', { value: instance.instancePublicIp })
     
   }
 }
